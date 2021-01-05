@@ -35,7 +35,8 @@ def get_titles_from_bibtex(filename):
     with open(filename) as fs:
         bibtex_content = fs.read()
         bt = pybtex.database.parse_string(bibtex_content, bib_format="bibtex")
-        return [bt.entries[entry].fields['title'] for entry in bt.entries]
+        return [bt.entries[entry].fields['title'] for entry in bt.entries if
+                'title' in bt.entries[entry].fields]
 
 def find_citers_from_titles(titles):
     """Given a list of paper titles, search for where they're cited and return
@@ -43,7 +44,7 @@ def find_citers_from_titles(titles):
 
     all_citers = defaultdict(lambda: (0, None))    # link -> (count, paper_obj)
 
-    for title in titles:
+    for title in titles[:100000]:
         api_params = {"api_key": SERP_API_KEY,
                       "engine": "google_scholar",
                       "q": "\"" + title + "\""}
@@ -55,8 +56,9 @@ def find_citers_from_titles(titles):
                 if get_cited_by(first_result):
                     cited_by_link = get_cited_by(first_result)["serpapi_scholar_link"]
                     # Remove q, add api_key
-                    cited_by_link = re.sub("q=.*", "", cited_by_link) + "api_key=" + SERP_API_KEY
+                    cited_by_link = re.sub("q=.*", "", cited_by_link) + "&api_key=" + SERP_API_KEY
                     # Fetch citers, accumulate count for each unique citer seen
+                    print(cited_by_link)
                     with urllib.request.urlopen(cited_by_link) as r2:
                         cite_res = json.loads(r2.read().decode("utf-8"))
                         if "organic_results" in cite_res:
@@ -69,7 +71,7 @@ def find_citers_from_titles(titles):
     # Sort by bib hit count first, then by num. total citations (descending)
     all_citers_list = list(all_citers.items())
     all_citers_list.sort(key=lambda x: (
-        1e6 * x[1][0] + get_cited_by(x[1][1]).get("total", 0)), reverse=True)
+        1e6 * x[1][0] + (get_cited_by(x[1][1]).get("total") or 0)), reverse=True)
     return all_citers_list
 
 
@@ -91,6 +93,6 @@ if __name__ == "__main__":
         title = paper_info.get("title", "")
         if norm_title(title) not in norm_titles:
             print("%d\t%d\t%s\t%s" % (count,
-                                      get_cited_by(paper_info).get("total", 0),
+                                      get_cited_by(paper_info).get("total") or 0,
                                       link,
                                       title))
